@@ -1,3 +1,5 @@
+"""The ``subset_subjects`` MEDS-Transforms stage."""
+
 from .subset_subjects import subset_subjects
 from .subset_subjects import subset_subjects as stage
 
