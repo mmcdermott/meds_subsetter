@@ -1,0 +1,38 @@
+"""Test set-up and fixtures code."""
+
+import json
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+import pyarrow as pa
+import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _setup_doctest_namespace(
+    doctest_namespace: dict[str, Any],
+    simple_static_MEDS: Path,
+    simple_static_MEDS_dataset_with_task: Path,
+):
+    """Pre-populate the doctest namespace.
+
+    ``yaml_disk``, ``print_directory``, and ``PrintConfig`` register themselves via their own pytest
+    plugins, so they are not bound here. The MEDS dataset fixtures come from ``meds_testing_helpers``;
+    binding them into the namespace lets doctests read as ``subset_meds(simple_static_MEDS, ...)``
+    rather than carrying dataset-construction boilerplate.
+    """
+    doctest_namespace.update(
+        {
+            "datetime": datetime,
+            "tempfile": tempfile,
+            "Path": Path,
+            "json": json,
+            "pl": pl,
+            "pa": pa,
+            "simple_static_MEDS": simple_static_MEDS,
+            "simple_static_MEDS_dataset_with_task": simple_static_MEDS_dataset_with_task,
+        }
+    )

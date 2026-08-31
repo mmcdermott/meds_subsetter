@@ -1,0 +1,102 @@
+[build-system]
+requires = ["setuptools>=80.9.0", "setuptools-scm>=9.2", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meds-subsetter"
+dynamic = ["version"] # Managed by setuptools-scm from git tags
+authors = [
+  {name="Matthew McDermott", email="mattmcdermott8@gmail.com"},
+]
+description = "Nested, hash-based subject subsetting, resharding, sizing, and content fingerprinting of MEDS datasets for scaling-law and variance experiments."
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "meds~=0.4.0",
+  "polars>=1.35,<2",
+  "pyarrow",
+  "MEDS-transforms>=0.6,<0.8",
+]
+
+[dependency-groups]
+dev = [
+  "pre-commit", "pytest", "pytest-cov", "pretty-print-directory",
+  "hypothesis", "yaml-to-disk", "meds-testing-helpers",
+  # Keep this pin in sync with the `ruff-pre-commit` rev in
+  # .pre-commit-config.yaml. If the two drift, `uv run ruff format` and the
+  # pre-commit hook can disagree and fight over the same files.
+  "ruff==0.16.5",
+  # shfmt-py bundles the `shfmt` binary used by the mdformat-shfmt pre-commit
+  # hook. Pinning it here (in addition to the pre-commit hook's
+  # additional_dependencies) gives a single source of truth and keeps local
+  # `uv run mdformat ...` runs consistent with CI pre-commit runs.
+  "shfmt-py==3.12.0.2",
+]
+docs = []
+
+[tool.setuptools_scm]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--color=yes",
+  "--doctest-modules",
+  "--ignore=docs",
+  "--ignore=AGENTS.md",
+  "--ignore=CONTRIBUTORS.md",
+  "--doctest-glob=*.md",
+  "--doctest-continue-on-failure",
+]
+markers = []
+doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
+
+[project.scripts]
+meds-subset = "meds_subsetter.cli:subset_main"
+meds-resample = "meds_subsetter.cli:resample_main"
+meds-size = "meds_subsetter.cli:size_main"
+meds-fingerprint = "meds_subsetter.cli:fingerprint_main"
+
+[project.entry-points."MEDS_transforms.stages"]
+subset_subjects = "meds_subsetter.stages:subset_subjects"
+
+[project.urls]
+Homepage = "https://github.com/mmcdermott/meds_subsetter"
+Issues = "https://github.com/mmcdermott/meds_subsetter/issues"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+extend-exclude = ["docs/index.md"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "DTZ", # flake8-datetimez
+    "RUF", # Ruff-specific rules
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "N",   # pep8-naming
+    "D",   # docstring-checker
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Unused imports in __init__ files
+"test_*" = ["DTZ001"]  # Ignore datetimez in test files
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["*MEDS*", "*NRT*", "D", "L"] # "D" is used for distributions/datasets
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["meds_subsetter"]
