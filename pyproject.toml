@@ -25,8 +25,13 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "pre-commit", "pytest", "pytest-cov", "pretty-print-directory",
-  "hypothesis", "yaml-to-disk", "meds-testing-helpers",
+  "pre-commit",
+  "pytest",
+  "pytest-cov",
+  "pretty-print-directory",
+  "hypothesis",
+  "yaml-to-disk",
+  "meds-testing-helpers",
   # Keep this pin in sync with the `ruff-pre-commit` rev in
   # .pre-commit-config.yaml. If the two drift, `uv run ruff format` and the
   # pre-commit hook can disagree and fight over the same files.
@@ -36,6 +41,7 @@ dev = [
   # additional_dependencies) gives a single source of truth and keeps local
   # `uv run mdformat ...` runs consistent with CI pre-commit runs.
   "shfmt-py==3.12.0.2",
+  "nested-ragged-tensors>=0.3,<0.4",
 ]
 docs = []
 
@@ -66,6 +72,11 @@ subset_subjects = "meds_subsetter.stages:subset_subjects"
 [project.urls]
 Homepage = "https://github.com/mmcdermott/meds_subsetter"
 Issues = "https://github.com/mmcdermott/meds_subsetter/issues"
+
+[project.optional-dependencies]
+torch = [
+    "nested-ragged-tensors>=0.3,<0.4",
+]
 
 [tool.ruff]
 target-version = "py312"

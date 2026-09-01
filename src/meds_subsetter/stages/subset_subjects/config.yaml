@@ -1,3 +1,4 @@
-n_subjects: null
-salt: meds_subsetter
-train_split: train
+n_subjects: null # How many train subjects to select, in nested salted rank order.
+subject_ids: null # An explicit list of subjects to keep; takes precedence over n_subjects.
+salt: meds_subsetter # The family salt that fixes the rank order.
+train_split: train # The split that is subsetted; all others pass through untouched.
