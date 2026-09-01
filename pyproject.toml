@@ -21,6 +21,7 @@ dependencies = [
   "polars>=1.35,<2",
   "pyarrow",
   "MEDS-transforms>=0.6,<0.8",
+  "pyyaml",
 ]
 
 [dependency-groups]

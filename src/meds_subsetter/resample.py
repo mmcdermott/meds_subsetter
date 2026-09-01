@@ -70,7 +70,7 @@ from typing import TYPE_CHECKING, Any
 import meds
 import polars as pl
 
-from .digests import digest, frame_digest, subject_set_digest
+from .digests import digest, frame_digest, pinned_schema, subject_set_digest
 from .materialize import atomic_write_json, atomic_write_parquet
 from .selection import draw_with_replacement, draw_without_replacement
 
@@ -387,8 +387,14 @@ def _index_id(paths: Sequence[Path]) -> str:
         >>> short_id(_index_id([*shards, shards[0]]))
         'ccac977efad8344f'
     """
-    lf = pl.scan_parquet(list(paths), glob=False, missing_columns="insert", extra_columns="ignore")
-    return frame_digest(lf, schema=lf.collect_schema())
+    # The pinned column set has to be the UNION over the label shards, not the schema polars infers
+    # from whichever one sorts first -- label shards legitimately differ in width (a task may emit
+    # `boolean_value` in one shard and not another), and inferring would digest the difference away.
+    schema = pinned_schema(list(paths))
+    lf = pl.scan_parquet(
+        list(paths), glob=False, schema=schema, missing_columns="insert", extra_columns="ignore"
+    )
+    return frame_digest(lf, schema=schema)
 
 
 def _prune_stale(family_dir: Path, keep: Sequence[str]) -> list[Path]:

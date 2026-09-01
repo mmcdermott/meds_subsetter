@@ -31,7 +31,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -55,25 +54,18 @@ from .config import (
     SubsetConfig,
     _load_yaml,
 )
-from .digests import combine_subject_digests, digest, frame_digest, short_id
+from .digests import frame_digest, pinned_schema, short_id
 from .materialize import atomic_write_json, atomic_write_parquet
 from .resample import RESAMPLES_SUBDIR, build_resamples
 
-# The five underscored names below are imported deliberately. `meds-fingerprint` must report the ids
-# `meds-subset` *records*, so it has to resolve a dataset's splits, pin the dataset-wide column set,
-# and digest subjects exactly the way the builder does -- and the only way to guarantee that is to
-# call the same code rather than to write a second implementation of it that can drift. See
-# `needs_from_others`: they want one public `subset.fingerprint(...)` to sit in front of them.
+# `meds-fingerprint` must report the ids `meds-subset` *records*, so it calls the builder's own
+# `subset.fingerprint` rather than reimplementing the computation, which could drift from it.
 from .sizes import TENSORIZED_SCHEMAS_SUBDIR, _parquet_shard_paths, size_meds, size_tensorized
 from .subset import (
     FAMILY_MANIFEST_NAME,
     NotAMEDSDatasetError,
-    _cached_subject_digests,
-    _dataset_id,
-    _open_parent,
-    _pinned_schema,
-    _scan,
     build_family,
+    fingerprint,
 )
 
 if TYPE_CHECKING:
@@ -97,12 +89,6 @@ EXIT_INPUT_ERROR = 3
 #: ``FileNotFoundError`` -- every one of which is a user mistake and none of which is a bug to report
 #: with a stack trace.
 _INPUT_ERRORS = (NotAMEDSDatasetError, OSError, ValueError)
-
-#: Phrasings the builders raise for a *Python* caller, and the flag that does the same job here.
-#: ``build_family(..., do_overwrite=True)`` is right for the library API and useless to someone
-#: holding a command line, where the flag is ``--force`` and there is no ``--do-overwrite``. Only the
-#: text on its way to stderr is rewritten; see ``needs_from_others`` for the better fix.
-_CLI_EQUIVALENTS = {"do_overwrite=True": "--force"}
 
 #: Defaults shown in ``--help``. They are *not* installed as argparse defaults: an override-able flag
 #: parses to ``None`` when absent so that presence, rather than a value comparison, decides whether it
@@ -145,16 +131,18 @@ def _report_input_error(e: Exception) -> int:
         A message the builders wrote for a Python caller is re-worded for one holding a command line.
         There is no ``--do-overwrite`` flag, and the one that does that job is ``--force``:
 
+        The builders phrase their refusals so that both callers are served, so nothing is rewritten
+        on the way out:
+
         >>> err = io.StringIO()
         >>> with contextlib.redirect_stderr(err):
-        ...     _ = _report_input_error(ValueError("Pass do_overwrite=True to discard and rebuild."))
+        ...     _ = _report_input_error(
+        ...         ValueError("Rebuild with overwrite enabled (--force, or do_overwrite=True).")
+        ...     )
         >>> print(err.getvalue(), end="")
-        error: Pass --force to discard and rebuild.
+        error: Rebuild with overwrite enabled (--force, or do_overwrite=True).
     """
-    message = str(e)
-    for python_api, flag in _CLI_EQUIVALENTS.items():
-        message = message.replace(python_api, flag)
-    print(f"error: {message}", file=sys.stderr)
+    print(f"error: {e}", file=sys.stderr)
     return EXIT_INPUT_ERROR
 
 
@@ -530,6 +518,7 @@ def _format_family(family: FamilyManifest) -> str:
         The block, without a trailing newline.
 
     Examples:
+        >>> from meds_subsetter.digests import digest
         >>> from meds_subsetter.subset import FamilyManifest, SubsetManifest
         >>> member = SubsetManifest(
         ...     name="N0000010", root="/out/N0000010", n_subjects=10,
@@ -678,8 +667,8 @@ def subset_main(argv: list[str] | None = None) -> int:
         (3, True)
 
         A family remembers which parent it was built from and refuses a different one. The refusal is
-        worded for whoever is reading it: from here that is ``--force``, not the ``do_overwrite=True``
-        keyword the library API takes:
+        worded for whoever is reading it: the builders name the command-line flag alongside the
+        keyword the library API takes, so nothing has to be rewritten on the way to stderr:
 
         >>> import shutil
         >>> other = Path(tmp.name) / "other"
@@ -687,10 +676,11 @@ def subset_main(argv: list[str] | None = None) -> int:
         >>> splits = other / "metadata" / "subject_splits.parquet"
         >>> _ = pl.read_parquet(splits).head(5).write_parquet(splits)
         >>> code, _, stderr = run(str(other), str(pinned), "-c", str(cfg), "-n", "2")
-        >>> code, "do_overwrite" in stderr
-        (3, False)
+        >>> code, "--force" in stderr
+        (3, True)
         >>> print(stderr.split("; ")[-1], end="")
-        its shards are not interchangeable. Pass --force to discard and rebuild.
+        its shards are not interchangeable. Rebuild with overwrite enabled (--force, or
+        do_overwrite=True) to discard and rebuild.
         >>> run(str(other), str(pinned), "-c", str(cfg), "-n", "2", "--force")[0]
         0
         >>> tmp.cleanup()
@@ -1004,6 +994,7 @@ def _format_resamples(family: ResampleFamilyManifest, out_root: Path) -> str:
         The block, without a trailing newline.
 
     Examples:
+        >>> from meds_subsetter.digests import digest
         >>> from meds_subsetter.resample import ResampleFamilyManifest
         >>> family = ResampleFamilyManifest(
         ...     config=ResampleConfig(n_resamples=100, size=50, salt="boot"), parent="/parent",
@@ -1322,6 +1313,7 @@ def _format_report(report: SizeReport) -> str:
         The table, without a trailing newline.
 
     Examples:
+        >>> from meds_subsetter.digests import digest
         >>> from meds_subsetter.sizes import SizeReport, SplitSizes
         >>> train = SplitSizes(
         ...     split="train", n_subjects=4, n_events=20, n_measurements=44,
@@ -1555,67 +1547,6 @@ def _fingerprint_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _dataset_fingerprint(root: Path, train_split: str) -> dict[str, Any]:
-    """Compute a dataset's content ids: the same ones a subset family records for a member.
-
-    Args:
-        root: The MEDS root.
-        train_split: Which split's content id is also reported as ``train_set_id``. ``None`` is
-            reported when the dataset has no such split, rather than failing a whole fingerprint over
-            one split label.
-
-    Returns:
-        The ids, JSON-ready.
-
-    Raises:
-        NotAMEDSDatasetError: If ``root`` is not a usable MEDS root.
-
-    Examples:
-        >>> ids = _dataset_fingerprint(simple_static_MEDS, "train")
-        >>> sorted(ids)
-        ['codes_id', 'content_ids', 'dataset_id', 'path', 'subject_set_id', 'train_set_id',
-         'train_split']
-        >>> {split: short_id(cid) for split, cid in ids["content_ids"].items()}
-        {'held_out': '1331c37b0d113abe', 'train': '5f7fa61a7c2ce1f4', 'tuning': 'fa72c91e0d4e32eb'}
-        >>> ids["train_set_id"] == ids["content_ids"]["train"]
-        True
-        >>> short_id(ids["subject_set_id"]), short_id(ids["codes_id"]), short_id(ids["dataset_id"])
-        ('147370abf9d27a63', '24269fbd07957eab', 'b6e95a4e73b8e9c7')
-
-        A split the dataset does not have reports ``None`` rather than raising:
-
-        >>> _dataset_fingerprint(simple_static_MEDS, "training")["train_set_id"] is None
-        True
-
-        Nothing is written to the dataset: the per-subject digest cache the computation needs lives in
-        a temporary directory that is dropped afterwards.
-
-        >>> before = sorted(p.name for p in simple_static_MEDS.rglob("*"))
-        >>> _ = _dataset_fingerprint(simple_static_MEDS, "train")
-        >>> sorted(p.name for p in simple_static_MEDS.rglob("*")) == before
-        True
-    """
-    with tempfile.TemporaryDirectory() as cache:
-        parent = _open_parent(root, Path(cache))
-        content_ids = {
-            split: combine_subject_digests(_cached_subject_digests(parent, split))
-            for split in sorted(parent.splits)
-        }
-        codes_path = root / meds.code_metadata_filepath
-        codes_id = (
-            frame_digest(pl.scan_parquet(codes_path, glob=False)) if codes_path.is_file() else digest([])
-        )
-        return {
-            "path": str(root),
-            "subject_set_id": parent.subject_set_id,
-            "content_ids": content_ids,
-            "train_split": train_split,
-            "train_set_id": content_ids.get(train_split),
-            "codes_id": codes_id,
-            "dataset_id": _dataset_id(content_ids, codes_id),
-        }
-
-
 def _index_fingerprint(index_dir: Path) -> dict[str, Any]:
     """Compute the content id of a task/index label frame.
 
@@ -1653,8 +1584,10 @@ def _index_fingerprint(index_dir: Path) -> dict[str, Any]:
     paths = _parquet_shard_paths(index_dir)
     if not paths:
         raise FileNotFoundError(f"No parquet label files under {index_dir}")
-    schema = _pinned_schema(paths)
-    labels = _scan(paths, schema).collect()
+    schema = pinned_schema(paths)
+    labels = pl.scan_parquet(
+        paths, glob=False, schema=schema, missing_columns="insert", extra_columns="ignore"
+    ).collect()
     return {
         "path": str(index_dir),
         "index_id": frame_digest(labels.lazy(), schema=schema),
@@ -1752,7 +1685,7 @@ def fingerprint_main(argv: list[str] | None = None) -> int:
         if args.dataset is None and args.index_dir is None:
             raise ValueError("Nothing to fingerprint: pass a dataset, --index-dir, or both.")
         if args.dataset is not None:
-            report["dataset"] = _dataset_fingerprint(args.dataset, args.train_split)
+            report["dataset"] = fingerprint(args.dataset, args.train_split)
         if args.index_dir is not None:
             report["index"] = _index_fingerprint(args.index_dir)
         if args.output is not None:

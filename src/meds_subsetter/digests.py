@@ -60,7 +60,8 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
+    from pathlib import Path
 
 #: Prefix on every digest this module returns; matches the sibling ``meds_summary_stats.digests``.
 DIGEST_PREFIX = "sha256:"
@@ -538,9 +539,8 @@ def subject_digests(
     The "fixed rendered column set" caveat is load-bearing rather than pedantic: MEDS makes
     ``numeric_value`` optional and permits extra columns, so shards of one dataset may differ in
     their columns, and the field set is otherwise read off whatever frame is handed in. Pass
-    ``schema`` -- the dataset-wide column set, e.g. the ``collect_schema()`` of a
-    ``scan_parquet(..., missing_columns="insert")`` over every shard -- whenever per-shard digests
-    will be combined or compared. Omit it only when the frame already spans everything being
+    ``schema`` -- the dataset-wide column set, which :func:`pinned_schema` computes -- whenever
+    per-shard digests will be combined or compared. Omit it only when the frame already spans everything being
     compared, or when every shard's schema is known to be identical.
 
     The canonical row strings are materialized to compute this, so prefer one call per shard --
@@ -622,8 +622,8 @@ def subject_digests(
         Shards of one dataset may legally differ in their *columns*, not just their rows: MEDS makes
         ``numeric_value`` optional and permits extra columns, so a shard can be three columns wide.
         The rendered field set comes from the frame, so without help a subject in a narrow shard
-        digests differently from the same subject read back through ``missing_columns="insert"``.
-        Pass ``schema`` -- the dataset-wide column set -- to pin it, and the two agree:
+        digests differently from the same subject read back from a wider one. Pass ``schema`` -- the
+        dataset-wide column set from :func:`pinned_schema` -- to pin it, and the two agree:
 
         >>> wide = pl.DataFrame(
         ...     {"subject_id": [1], "code": ["A"], "numeric_value": pl.Series([1.0], dtype=pl.Float32)}
@@ -888,3 +888,76 @@ def combine_subject_digests(df: pl.DataFrame) -> str:
     if "digest" not in df.columns:
         raise KeyError(f"Expected a 'digest' column; frame has {df.columns}")
     return combine_digests(df["digest"])
+
+
+def pinned_schema(paths: Sequence[Path]) -> pl.Schema:
+    r"""Return the *union* of the column sets of a set of parquet shards.
+
+    This is the ``schema`` to hand :func:`subject_digests` and :func:`frame_digest` so that per-shard
+    digests of one dataset are comparable. It has to be the *dataset's* columns, not one shard's.
+
+    Reading it off a multi-file ``pl.scan_parquet(paths, missing_columns="insert",
+    extra_columns="ignore").collect_schema()`` -- the obvious way -- does **not** give the union:
+    polars resolves the schema from the *first* file and then inserts or ignores to match it. MEDS
+    makes ``numeric_value`` optional, so a dataset whose first shard by sorted path happens to be
+    three columns wide would have every numeric value silently dropped out of its ids. The union is
+    therefore built from each shard's own footer, first occurrence fixing a column's position and
+    dtype.
+
+    Args:
+        paths: The shards to union, in the order that should fix column positions. Only parquet
+            footers are read, so this is cheap even on a large dataset.
+
+    Returns:
+        The union schema, in first-seen order.
+
+    Raises:
+        ValueError: If ``paths`` is empty; there is no schema to pin.
+
+    Examples:
+        >>> from meds_subsetter.sizes import meds_shard_paths
+        >>> pinned_schema(meds_shard_paths(simple_static_MEDS))
+        Schema({'subject_id': Int64, 'time': Datetime(time_unit='us', time_zone=None),
+                'code': String, 'numeric_value': Float32})
+
+        The hazard this exists to avoid. A three-column shard is legal MEDS, and here it sorts first:
+
+        >>> tmp = tempfile.TemporaryDirectory()
+        >>> root = Path(tmp.name)
+        >>> pl.DataFrame({"subject_id": [2], "code": ["B"]}).write_parquet(root / "a.parquet")
+        >>> pl.DataFrame(
+        ...     {"subject_id": [1], "code": ["A"], "numeric_value": pl.Series([1.0], dtype=pl.Float32)}
+        ... ).write_parquet(root / "b.parquet")
+        >>> paths = sorted(root.glob("*.parquet"))
+        >>> pl.scan_parquet(paths, missing_columns="insert", extra_columns="ignore").collect_schema()
+        Schema({'subject_id': Int64, 'code': String})
+        >>> pinned_schema(paths)
+        Schema({'subject_id': Int64, 'code': String, 'numeric_value': Float32})
+
+        Pinning it makes the two shards' digests agree with the whole dataset's:
+
+        >>> pinned = pinned_schema(paths)
+        >>> per_shard = pl.concat(
+        ...     [subject_digests(pl.scan_parquet(p, glob=False), schema=pinned) for p in paths]
+        ... ).sort("subject_id")
+        >>> whole = subject_digests(
+        ...     pl.scan_parquet(paths, missing_columns="insert", schema=pinned), schema=pinned
+        ... )
+        >>> per_shard.equals(whole)
+        True
+        >>> tmp.cleanup()
+
+        An empty shard list has no union to report:
+
+        >>> pinned_schema([])
+        Traceback (most recent call last):
+            ...
+        ValueError: Cannot pin a schema over zero shards.
+    """
+    if not paths:
+        raise ValueError("Cannot pin a schema over zero shards.")
+    merged: dict[str, pl.DataType] = {}
+    for path in paths:
+        for name, dtype in pl.scan_parquet(path, glob=False).collect_schema().items():
+            merged.setdefault(name, dtype)
+    return pl.Schema(merged)

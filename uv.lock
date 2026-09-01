@@ -329,6 +329,7 @@ dependencies = [
     { name = "meds-transforms" },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -357,6 +358,7 @@ requires-dist = [
     { name = "nested-ragged-tensors", marker = "extra == 'torch'", specifier = ">=0.3,<0.4" },
     { name = "polars", specifier = ">=1.35,<2" },
     { name = "pyarrow" },
+    { name = "pyyaml" },
 ]
 provides-extras = ["torch"]
 

@@ -158,19 +158,75 @@ def _checked_kwargs(cls: type, raw: dict[str, Any]) -> dict[str, Any]:
     return dict(raw)
 
 
-def _load_yaml(path: str | Path) -> dict[str, Any]:
-    """Read a YAML mapping from ``path``, treating an empty document as an empty mapping.
+def load_yaml_mapping(path: str | Path) -> dict[str, Any]:
+    r"""Read a YAML mapping from ``path``, treating an empty document as an empty mapping.
+
+    This is the *partial* read that :meth:`SubsetConfig.from_yaml` is built on, and the one a
+    command line wants: a config file that a user will complete with flags is not yet a valid
+    config, so it must be readable without being validated.
 
     The file is decoded as UTF-8 rather than through the locale's preferred codec, so the same bytes
     yield the same config -- and therefore the same salt, ranks, and shard assignment -- everywhere.
+    PyYAML's own parse errors name the document ``<unicode string>``, which is useless to a user
+    staring at a path, so they are re-raised naming the file.
+
+    Args:
+        path: The YAML file to read.
+
+    Returns:
+        The mapping it contains; ``{}`` for an empty document.
+
+    Raises:
+        ValueError: If the file is not valid YAML, or does not contain a mapping.
+        OSError: If the file cannot be read.
+
+    Examples:
+        >>> tmp = tempfile.TemporaryDirectory()
+        >>> p = Path(tmp.name) / "cfg.yaml"
+        >>> _ = p.write_text("salt: fam1\nn_subjects_per_shard: 25\n")
+        >>> load_yaml_mapping(p)
+        {'salt': 'fam1', 'n_subjects_per_shard': 25}
+
+        A partial config is fine -- completing it is the caller's job:
+
+        >>> _ = p.write_text("salt: fam1\n")
+        >>> load_yaml_mapping(p)
+        {'salt': 'fam1'}
+
+        An empty document is an empty mapping, not an error:
+
+        >>> _ = p.write_text("")
+        >>> load_yaml_mapping(p)
+        {}
+
+        A non-mapping document, and malformed YAML, both name the file:
+
+        >>> _ = p.write_text("- a\n- b\n")
+        >>> load_yaml_mapping(p)
+        Traceback (most recent call last):
+            ...
+        ValueError: /...cfg.yaml must contain a YAML mapping; got list
+        >>> _ = p.write_text("salt: [unclosed\n")
+        >>> load_yaml_mapping(p)
+        Traceback (most recent call last):
+            ...
+        ValueError: /...cfg.yaml is not valid YAML: while parsing a flow sequence...
+        >>> tmp.cleanup()
     """
     p = Path(path)
-    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    try:
+        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ValueError(f"{p} is not valid YAML: {e}") from e
     if raw is None:
         return {}
     if not isinstance(raw, dict):
         raise ValueError(f"{p} must contain a YAML mapping; got {type(raw).__name__}")
     return raw
+
+
+#: Backwards-compatible private alias; :func:`load_yaml_mapping` is the supported name.
+_load_yaml = load_yaml_mapping
 
 
 def _as_positive_int(name: str, value: Any) -> int:

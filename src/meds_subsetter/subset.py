@@ -52,6 +52,7 @@ import json
 import logging
 import os
 import shutil
+import tempfile
 import time
 import warnings
 from pathlib import Path
@@ -67,6 +68,7 @@ from .digests import (
     combine_subject_digests,
     digest,
     frame_digest,
+    pinned_schema,
     short_id,
     subject_digests,
     subject_set_digest,
@@ -736,11 +738,7 @@ def _pinned_schema(paths: Sequence[Path]) -> pl.Schema:
         Schema({'subject_id': Int64, 'code': String, 'numeric_value': Float32})
         >>> tmp.cleanup()
     """
-    merged: dict[str, pl.DataType] = {}
-    for path in paths:
-        for name, dtype in pl.scan_parquet(path, glob=False).collect_schema().items():
-            merged.setdefault(name, dtype)
-    return pl.Schema(merged)
+    return pinned_schema(paths)
 
 
 def _splits_from_file(path: Path) -> dict[str, tuple[int, ...]]:
@@ -1741,6 +1739,72 @@ def _write_subject_splits(splits: Mapping[str, Sequence[int]], path: Path) -> No
     _publish(lambda staged: atomic_write_parquet(frame, staged), path)
 
 
+def fingerprint(root: Path, train_split: str) -> dict[str, Any]:
+    """Compute a dataset's content ids: the same ones a subset family records for a member.
+
+    This is the public read-only counterpart of :func:`build_family` -- it computes byte-for-byte the
+    ids a member manifest carries, without building anything and without writing to ``root``. It is
+    what ``meds-fingerprint`` reports, so a dataset produced elsewhere can be checked for identity
+    against a family member.
+
+    Args:
+        root: The MEDS root.
+        train_split: Which split's content id is also reported as ``train_set_id``. ``None`` is
+            reported when the dataset has no such split, rather than failing a whole fingerprint over
+            one split label.
+
+    Returns:
+        The ids, JSON-ready.
+
+    Raises:
+        NotAMEDSDatasetError: If ``root`` is not a usable MEDS root.
+
+    Examples:
+        >>> ids = fingerprint(simple_static_MEDS, "train")
+        >>> sorted(ids)
+        ['codes_id', 'content_ids', 'dataset_id', 'path', 'subject_set_id', 'train_set_id',
+         'train_split']
+        >>> {split: short_id(cid) for split, cid in ids["content_ids"].items()}
+        {'held_out': '1331c37b0d113abe', 'train': '5f7fa61a7c2ce1f4', 'tuning': 'fa72c91e0d4e32eb'}
+        >>> ids["train_set_id"] == ids["content_ids"]["train"]
+        True
+        >>> short_id(ids["subject_set_id"]), short_id(ids["codes_id"]), short_id(ids["dataset_id"])
+        ('147370abf9d27a63', '24269fbd07957eab', 'b6e95a4e73b8e9c7')
+
+        A split the dataset does not have reports ``None`` rather than raising:
+
+        >>> fingerprint(simple_static_MEDS, "training")["train_set_id"] is None
+        True
+
+        Nothing is written to the dataset: the per-subject digest cache the computation needs lives in
+        a temporary directory that is dropped afterwards.
+
+        >>> before = sorted(p.name for p in simple_static_MEDS.rglob("*"))
+        >>> _ = fingerprint(simple_static_MEDS, "train")
+        >>> sorted(p.name for p in simple_static_MEDS.rglob("*")) == before
+        True
+    """
+    with tempfile.TemporaryDirectory() as cache:
+        parent = _open_parent(root, Path(cache))
+        content_ids = {
+            split: combine_subject_digests(_cached_subject_digests(parent, split))
+            for split in sorted(parent.splits)
+        }
+        codes_path = root / meds.code_metadata_filepath
+        codes_id = (
+            frame_digest(pl.scan_parquet(codes_path, glob=False)) if codes_path.is_file() else digest([])
+        )
+        return {
+            "path": str(root),
+            "subject_set_id": parent.subject_set_id,
+            "content_ids": content_ids,
+            "train_split": train_split,
+            "train_set_id": content_ids.get(train_split),
+            "codes_id": codes_id,
+            "dataset_id": _dataset_id(content_ids, codes_id),
+        }
+
+
 def _warn_if_pruning(cfg: SubsetConfig) -> None:
     """Warn that pruned code metadata makes a multi-member family's vocabulary a function of ``N``.
 
@@ -1754,7 +1818,8 @@ def _warn_if_pruning(cfg: SubsetConfig) -> None:
         >>> _warn_if_pruning(SubsetConfig(n_subjects=(10, 100)))
         This family prunes metadata/codes.parquet, so its 2 members have different vocabularies: a
         downstream MTD_preprocess refits fit_vocabulary_indices from each member's own codes.parquet
-        and permutes the indices, worst at the small-N end. Use code_metadata='copy' to share the
+        and permutes the indices, worst at the small-N end. Set the code metadata policy to 'copy'
+        (--code-metadata copy, or code_metadata='copy') to share the
         parent's vocabulary across the family.
 
         A single-member family has nothing to be inconsistent with, and ``copy`` is the fix:
@@ -1767,7 +1832,8 @@ def _warn_if_pruning(cfg: SubsetConfig) -> None:
         logger.warning(
             "This family prunes %s, so its %d members have different vocabularies: a downstream "
             "MTD_preprocess refits fit_vocabulary_indices from each member's own codes.parquet and "
-            "permutes the indices, worst at the small-N end. Use code_metadata='copy' to share the "
+            "permutes the indices, worst at the small-N end. Set the code metadata policy to 'copy' "
+            "(--code-metadata copy, or code_metadata='copy') to share the "
             "parent's vocabulary across the family.",
             meds.code_metadata_filepath,
             len(cfg.n_subjects),
@@ -2236,8 +2302,8 @@ def _check_family(out_root: Path, parent: _Parent, store: ShardStore, *, do_over
         Traceback (most recent call last):
             ...
         ValueError: ...family.json records a family built from '...' with fingerprint sha256:...,
-        but ...parent has sha256:...; its shards are not interchangeable. Pass do_overwrite=True to
-        discard and rebuild.
+        but ...parent has sha256:...; its shards are not interchangeable. Rebuild with overwrite
+        enabled (--force, or do_overwrite=True) to discard and rebuild.
 
         ``do_overwrite`` discards the store and rebuilds, and the id the manifest then reports is a
         digest of the bytes actually on disk -- which is the whole point of the binding:
@@ -2288,8 +2354,8 @@ def _check_family(out_root: Path, parent: _Parent, store: ShardStore, *, do_over
         field, was, now = moved[0]
         raise ValueError(
             f"{manifest} records a family built from {recorded.get('path')!r} with {field} "
-            f"{was}, but {parent.root} has {now}; its shards are not interchangeable. Pass "
-            f"do_overwrite=True to discard and rebuild."
+            f"{was}, but {parent.root} has {now}; its shards are not interchangeable. "
+            f"Rebuild with overwrite enabled (--force, or do_overwrite=True) to discard and rebuild."
         )
     logger.warning("Parent of %s changed; discarding the existing shard store and caches.", out_root)
     shutil.rmtree(store.root, ignore_errors=True)
@@ -2671,8 +2737,8 @@ def build_family(
         Traceback (most recent call last):
             ...
         ValueError: ...family.json records a family built from '...' with subject_set_id sha256:...,
-        but ...other has sha256:...; its shards are not interchangeable. Pass do_overwrite=True to
-        discard and rebuild.
+        but ...other has sha256:...; its shards are not interchangeable. Rebuild with overwrite
+        enabled (--force, or do_overwrite=True) to discard and rebuild.
         >>> tmp.cleanup()
 
         With a task directory, every member gets its own labels, resharded one file per data shard --

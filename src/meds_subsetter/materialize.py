@@ -305,6 +305,17 @@ def place(src: Path, dst: Path, mode: LinkMode | str) -> None:
         >>> dst.read_text(), os.readlink(dst)
         ('shard A', '../../../.shard_store/train/r0-50.parquet')
 
+        Re-placing a *hardlink* is the case that most easily leaks a staging file, because POSIX
+        ``rename()`` is a no-op -- reporting success -- when both names already name one inode. No
+        ``.tmp`` may survive, or every rebuild would litter one per shard:
+
+        >>> place(src, hard, "hardlink")
+        >>> place(src, hard, "hardlink")
+        >>> [p.name for p in hard.parent.iterdir() if p.name.endswith(TMP_SUFFIX)]
+        []
+        >>> hard.stat().st_ino == src.stat().st_ino
+        True
+
         A filesystem that refuses hardlinks (or a cross-device ``dst``) degrades to a copy rather than
         failing the run:
 
@@ -360,7 +371,15 @@ def place(src: Path, dst: Path, mode: LinkMode | str) -> None:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
-    os.replace(tmp, dst)
+    # POSIX `rename()` is a documented no-op when both names already resolve to one inode, and it
+    # reports success. Re-placing an already-hardlinked shard -- exactly what an idempotent family
+    # rebuild does -- therefore leaves the staging file behind forever, one per shard per rebuild.
+    # Unlinking unconditionally afterwards is safe because `os.replace` either moved `tmp` (so the
+    # unlink is a no-op via `missing_ok`) or left `dst` already correct.
+    try:
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _check_component(name: str, value: str) -> None:
