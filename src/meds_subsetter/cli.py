@@ -67,6 +67,7 @@ from .subset import (
     build_family,
     fingerprint,
 )
+from .tensorized import build_tensorized_family, is_tensorized_cohort
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -259,7 +260,17 @@ def _subset_parser() -> argparse.ArgumentParser:
         prog="meds-subset",
         description="Build a nested family of MEDS subject subsets that share their shard files.",
     )
-    parser.add_argument("parent", type=Path, help="Root of the parent MEDS dataset.")
+    parser.add_argument("parent", type=Path, help="Root of the parent MEDS dataset or tensorized cohort.")
+    parser.add_argument(
+        "--kind",
+        choices=["auto", "meds", "tensorized"],
+        default="auto",
+        help=(
+            "Which kind of parent this is. 'tensorized' subsets a MEDS-Torch-Data cohort in place by "
+            "slicing its .nrt tensors, with no preprocessing run; 'meds' subsets a raw MEDS dataset. "
+            "'auto' (the default) picks 'tensorized' when the parent has tokenization/schemas."
+        ),
+    )
     parser.add_argument(
         "out_root", type=Path, help="Directory to build the family in; family.json is written here."
     )
@@ -707,17 +718,31 @@ def subset_main(argv: list[str] | None = None) -> int:
     args = _subset_parser().parse_args(argv)
     try:
         cfg = _resolve_subset_config(args)
-        family = build_family(
-            args.parent,
-            args.out_root,
-            cfg,
-            index_dir=args.index_dir,
-            task_name=args.task_name,
-            workers=args.workers,
-            worker=args.worker,
-            do_overwrite=args.force,
-        )
+        kind = args.kind
+        if kind == "auto":
+            kind = "tensorized" if is_tensorized_cohort(args.parent) else "meds"
+        if kind == "tensorized":
+            if args.index_dir is not None:
+                raise ValueError(
+                    "--index-dir applies to a raw MEDS parent only. A tensorized cohort's task labels "
+                    "live outside it (meds_torchdata reads them from its own task_labels_dir), so "
+                    "subset them against the raw dataset instead."
+                )
+            family = build_tensorized_family(args.parent, args.out_root, cfg, do_overwrite=args.force)
+        else:
+            family = build_family(
+                args.parent,
+                args.out_root,
+                cfg,
+                index_dir=args.index_dir,
+                task_name=args.task_name,
+                workers=args.workers,
+                worker=args.worker,
+                do_overwrite=args.force,
+            )
     except _INPUT_ERRORS as e:
+        return _report_input_error(e)
+    except ImportError as e:
         return _report_input_error(e)
 
     print(_format_family(family))
