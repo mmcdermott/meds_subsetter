@@ -41,7 +41,7 @@ dev = [
   # hook. Pinning it here (in addition to the pre-commit hook's
   # additional_dependencies) gives a single source of truth and keeps local
   # `uv run mdformat ...` runs consistent with CI pre-commit runs.
-  "shfmt-py==3.12.0.2",
+  "shfmt-py==4.0.0",
   "nested-ragged-tensors>=0.3,<0.4",
   "pyarrow>=25.0.1",
 ]
