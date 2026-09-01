@@ -19,9 +19,9 @@ classifiers = [
 dependencies = [
   "meds~=0.4.0",
   "polars>=1.35,<2",
-  "pyarrow",
   "MEDS-transforms>=0.6,<0.8",
   "pyyaml",
+  "numpy>=1.26",
 ]
 
 [dependency-groups]
@@ -43,6 +43,7 @@ dev = [
   # `uv run mdformat ...` runs consistent with CI pre-commit runs.
   "shfmt-py==3.12.0.2",
   "nested-ragged-tensors>=0.3,<0.4",
+  "pyarrow>=25.0.1",
 ]
 docs = []
 
@@ -103,6 +104,9 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Unused imports in __init__ files
 "test_*" = ["DTZ001"]  # Ignore datetimez in test files
+# MEDS `time` and `prediction_time` are `timestamp("us")` with no timezone (meds/schema.py), so
+# fixture data must be built from naive datetimes; an aware one would not round-trip.
+"conftest.py" = ["DTZ001"]
 
 [tool.ruff.lint.pep8-naming]
 extend-ignore-names = ["*MEDS*", "*NRT*", "D", "L"] # "D" is used for distributions/datasets

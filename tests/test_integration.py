@@ -1,10 +1,10 @@
 """End-to-end tests of the installed console scripts, run as real subprocesses.
 
-The doctests exercise each ``*_main`` in-process, which is fast and readable but proves nothing about
-the console-script entry points declared in ``pyproject.toml``, about exit codes as a shell sees them,
-or about the four commands agreeing with each other. That is what these cover: a full workflow --
-subset, size, fingerprint, resample -- against a dataset written to disk, checking the artifacts and
-cross-checking every number against an independent computation.
+The doctests exercise each ``*_main`` in-process, which is fast and readable but proves nothing about the
+console-script entry points declared in ``pyproject.toml``, about exit codes as a shell sees them, or about
+the four commands agreeing with each other. That is what these cover: a full workflow -- subset, size,
+fingerprint, resample -- against a dataset written to disk, checking the artifacts and cross-checking every
+number against an independent computation.
 """
 
 from __future__ import annotations
@@ -260,9 +260,9 @@ def test_tensorized_subset_tensors_match_the_parent(
 ) -> None:
     """A tensorized subset's tensors are the parent's, sliced -- not recomputed and not reordered.
 
-    Subject identity in a ``.nrt`` is positional, so an off-by-one in the slice would silently pair
-    every subject with another subject's tensors. Checking bit-identity per subject is the only test
-    that would catch that; a shape or count check would not.
+    Subject identity in a ``.nrt`` is positional, so an off-by-one in the slice would silently pair every
+    subject with another subject's tensors. Checking bit-identity per subject is the only test that would
+    catch that; a shape or count check would not.
     """
     import numpy as np
     from nested_ragged_tensors.ragged_numpy import JointNestedRaggedTensorDict

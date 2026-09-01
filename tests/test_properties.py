@@ -86,8 +86,8 @@ def test_uniform_score_is_a_probability(subject: int, salt: str) -> None:
 def test_full_shards_are_shared_across_members(pool: list[int], salt: str, data: st.DataObject) -> None:
     """Every *full* shard of a smaller member is the larger member's shard: same subjects, same key.
 
-    This is the disk-sharing claim, stated as arithmetic. Only the final, partial shard of the smaller
-    member may differ, and only when its size is not a multiple of the shard size.
+    This is the disk-sharing claim, stated as arithmetic. Only the final, partial shard of the smaller member
+    may differ, and only when its size is not a multiple of the shard size.
     """
     per_shard = data.draw(st.integers(min_value=1, max_value=16))
     n_small = data.draw(st.integers(min_value=0, max_value=len(pool)))
@@ -109,8 +109,8 @@ def test_full_shards_are_shared_across_members(pool: list[int], salt: str, data:
 def test_shards_partition_the_selection(pool: list[int], salt: str, per_shard: int) -> None:
     """Shards are disjoint, cover the selection exactly, and none exceeds the configured size.
 
-    A subject in two shards would violate the MEDS one-subject-one-file invariant that every scan,
-    count and digest in this package relies on.
+    A subject in two shards would violate the MEDS one-subject-one-file invariant that every scan, count and
+    digest in this package relies on.
     """
     ranked = rank_subjects(pool, salt)
     specs = assign_shards(ranked, per_shard)
@@ -132,13 +132,13 @@ def test_digest_is_invariant_to_sharding_and_row_order(
 ) -> None:
     """Resharding a dataset, and shuffling rows within a shard, cannot change the dataset id.
 
-    This is what makes an id comparable between a parent and a resharded subset of it, and it is the
-    property the whole `train_set_id` story depends on.
+    This is what makes an id comparable between a parent and a resharded subset of it, and it is the property
+    the whole `train_set_id` story depends on.
 
-    Shard boundaries fall *between subjects*, because that is what MEDS requires -- "data about a
-    single subject cannot be split across parquet files" -- and it is the assumption every per-shard
-    computation in this package is entitled to make. A frame that splits one subject over two shards
-    is not a resharding of this dataset; it is a different, invalid one.
+    Shard boundaries fall *between subjects*, because that is what MEDS requires -- "data about a single
+    subject cannot be split across parquet files" -- and it is the assumption every per-shard computation in
+    this package is entitled to make. A frame that splits one subject over two shards is not a resharding of
+    this dataset; it is a different, invalid one.
     """
     rows = [
         (sid, float(sid * 10 + r), f"C{r % 3}") for sid in range(1, n_subjects + 1) for r in range(n_rows)
@@ -193,8 +193,8 @@ def test_digest_detects_any_changed_value(n_subjects: int, bump: int) -> None:
 def test_bootstrap_draws_are_reproducible_and_nested(pool: list[int], salt: str, data: st.DataObject) -> None:
     """A replicate is a pure function of its inputs, and lengthening it only appends.
 
-    Reproducibility is what lets a manifest record a seed instead of a subject list; the prefix
-    property is what lets a bigger evaluation set be a superset of a smaller one.
+    Reproducibility is what lets a manifest record a seed instead of a subject list; the prefix property is
+    what lets a bigger evaluation set be a superset of a smaller one.
     """
     n_small = data.draw(st.integers(min_value=0, max_value=40))
     n_large = data.draw(st.integers(min_value=n_small, max_value=n_small + 40))
@@ -243,9 +243,9 @@ def test_draws_without_replacement_never_repeat(pool: list[int], salt: str, data
 def test_pinned_schema_is_the_union(widths: list[int], tmp_path_factory) -> None:
     """The pinned schema is the union of the shards' columns, whatever order they sort in.
 
-    MEDS makes `numeric_value` optional, so shards legitimately differ in width. Inferring the schema
-    from whichever shard sorts first -- which is what a multi-file `scan_parquet` does -- would drop
-    real columns out of every id computed from it.
+    MEDS makes `numeric_value` optional, so shards legitimately differ in width. Inferring the schema from
+    whichever shard sorts first -- which is what a multi-file `scan_parquet` does -- would drop real columns
+    out of every id computed from it.
     """
     columns = ["subject_id", "code", "numeric_value", "text_value"]
     root = tmp_path_factory.mktemp("shards")

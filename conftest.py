@@ -26,9 +26,9 @@ _COHORT = {
 def _write_tensorized_shard(root: Path, shard: str, subject_ids: tuple[int, ...]) -> None:
     """Write one ``tokenization/schemas`` parquet and its matching ``data`` ``.nrt``.
 
-    The layout is MEDS-Torch-Data's, verified against a real ``MTD_preprocess`` run: the schemas
-    parquet carries the static data and the per-subject event structure, the ``.nrt`` carries the
-    dynamic tensors, and the two are joined *positionally* -- schemas row ``i`` is NRT index ``i``.
+    The layout is MEDS-Torch-Data's, verified against a real ``MTD_preprocess`` run: the schemas parquet
+    carries the static data and the per-subject event structure, the ``.nrt`` carries the dynamic tensors, and
+    the two are joined *positionally* -- schemas row ``i`` is NRT index ``i``.
     """
     n_events = [2 + (i % 3) for i, _ in enumerate(subject_ids)]
     time_delta_days = [[float(e) for e in range(n)] for n in n_events]
@@ -70,9 +70,9 @@ def _write_tensorized_shard(root: Path, shard: str, subject_ids: tuple[int, ...]
 def tiny_tensorized_cohort(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A minimal MEDS-Torch-Data tensorized cohort: 6 subjects over 4 shards, plus code metadata.
 
-    Building one with the real ``MTD_preprocess`` would pull in torch and the whole preprocessing
-    pipeline for what is, on disk, three kinds of file. The layout written here was checked against a
-    real ``MTD_preprocess`` output, and it is the layout ``meds_torchdata`` actually reads:
+    Building one with the real ``MTD_preprocess`` would pull in torch and the whole preprocessing pipeline for
+    what is, on disk, three kinds of file. The layout written here was checked against a real
+    ``MTD_preprocess`` output, and it is the layout ``meds_torchdata`` actually reads:
     ``tokenization/schemas/<split>/<n>.parquet``, ``data/<split>/<n>.nrt``, and ``metadata/codes.parquet``.
     """
     root = tmp_path_factory.mktemp("tensorized_cohort")
@@ -99,10 +99,10 @@ def _setup_doctest_namespace(
 ):
     """Pre-populate the doctest namespace.
 
-    ``yaml_disk``, ``print_directory``, and ``PrintConfig`` register themselves via their own pytest
-    plugins, so they are not bound here. The MEDS dataset fixtures come from ``meds_testing_helpers``;
-    binding them into the namespace lets doctests read as ``subset_meds(simple_static_MEDS, ...)``
-    rather than carrying dataset-construction boilerplate.
+    ``yaml_disk``, ``print_directory``, and ``PrintConfig`` register themselves via their own pytest plugins,
+    so they are not bound here. The MEDS dataset fixtures come from ``meds_testing_helpers``; binding them
+    into the namespace lets doctests read as ``subset_meds(simple_static_MEDS, ...)`` rather than carrying
+    dataset-construction boilerplate.
     """
     doctest_namespace.update(
         {

@@ -146,9 +146,9 @@ def _as_dict(cfg: Any) -> dict[str, Any]:
 def _checked_kwargs(cls: type, raw: dict[str, Any]) -> dict[str, Any]:
     """Copy ``raw``, raising if it is not a mapping or carries any key ``cls`` does not define.
 
-    Keys are reported through ``repr`` rather than sorted directly: YAML mappings may carry non-string
-    keys, and sorting a mix of ``str`` and ``int`` would raise a bare ``TypeError`` in the middle of
-    building an error message.
+    Keys are reported through ``repr`` rather than sorted directly: YAML mappings may carry non-string keys,
+    and sorting a mix of ``str`` and ``int`` would raise a bare ``TypeError`` in the middle of building an
+    error message.
     """
     if not isinstance(raw, dict):
         raise ValueError(f"{cls.__name__} must be built from a mapping; got {type(raw).__name__}")
@@ -232,10 +232,10 @@ _load_yaml = load_yaml_mapping
 def _as_positive_int(name: str, value: Any) -> int:
     """Return ``value`` as a builtin positive ``int``, raising ``ValueError`` if it is not one.
 
-    Anything that is losslessly an integer (``__index__``, so a ``numpy`` scalar included) is accepted
-    and narrowed to a builtin ``int``; ``bool`` is not, since ``True`` as a size is always a mistake.
-    Narrowing here is what keeps ``to_dict`` JSON- and YAML-native, and rejecting integer-*valued*
-    floats and strings here is what keeps every later stage from having to re-check.
+    Anything that is losslessly an integer (``__index__``, so a ``numpy`` scalar included) is accepted and
+    narrowed to a builtin ``int``; ``bool`` is not, since ``True`` as a size is always a mistake. Narrowing
+    here is what keeps ``to_dict`` JSON- and YAML-native, and rejecting integer-*valued* floats and strings
+    here is what keeps every later stage from having to re-check.
     """
     if isinstance(value, bool):
         raise ValueError(f"{name} must be an integer; got {value!r}")

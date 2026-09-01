@@ -357,9 +357,9 @@ def _slice_shard(root: Path, plan: pl.DataFrame, out_schema: Path, out_nrt: Path
     """Write one output shard by slicing the parent's schemas frames and tensors.
 
     ``plan`` is consumed in ``(__shard__, __row_index__)`` order rather than in rank order. Both are
-    deterministic, but this one takes exactly one contiguous read per source shard, and -- because it
-    depends only on the parent -- it gives the *same* bytes for a shard however many members of the
-    family happen to contain it. That is what lets members share the file.
+    deterministic, but this one takes exactly one contiguous read per source shard, and -- because it depends
+    only on the parent -- it gives the *same* bytes for a shard however many members of the family happen to
+    contain it. That is what lets members share the file.
     """
     jnrt = _require_nrt()
     import numpy as np

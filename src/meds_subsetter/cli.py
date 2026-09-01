@@ -671,9 +671,9 @@ def subset_main(argv: list[str] | None = None) -> int:
         >>> code, _, stderr = run(str(simple_static_MEDS), str(out), "-c", str(simple_static_MEDS))
         >>> code, stderr.startswith("error: [Errno 21] Is a directory: ")
         (3, True)
-        >>> afile = Path(tmp.name) / "afile"
-        >>> _ = afile.write_text("")
-        >>> code, _, stderr = run(str(simple_static_MEDS), str(afile), "-n", "2")
+        >>> notadir = Path(tmp.name) / "notadir"
+        >>> _ = notadir.write_text("")
+        >>> code, _, stderr = run(str(simple_static_MEDS), str(notadir), "-n", "2")
         >>> code, stderr.startswith("error: [Errno 20] Not a directory: ")
         (3, True)
 
@@ -1491,9 +1491,9 @@ def size_main(argv: list[str] | None = None) -> int:
         A destination that cannot be written to is reported the same way, rather than as a traceback
         out of the writer:
 
-        >>> afile = Path(tmp.name) / "afile"
-        >>> _ = afile.write_text("")
-        >>> code, _, stderr = run(str(simple_static_MEDS), "-o", str(afile / "sizes.parquet"))
+        >>> notadir = Path(tmp.name) / "notadir"
+        >>> _ = notadir.write_text("")
+        >>> code, _, stderr = run(str(simple_static_MEDS), "-o", str(notadir / "sizes.parquet"))
         >>> code, stderr.startswith("error: [Errno 17] File exists: ")
         (3, True)
         >>> tmp.cleanup()
@@ -1697,9 +1697,9 @@ def fingerprint_main(argv: list[str] | None = None) -> int:
 
         >>> run(str(Path(tmp.name) / "nope"))[::2]
         (3, 'error: ...nope is not a MEDS dataset: no data directory at ...nope/data\n')
-        >>> afile = Path(tmp.name) / "afile"
-        >>> _ = afile.write_text("")
-        >>> code, _, stderr = run(str(simple_static_MEDS), "-o", str(afile / "ids.json"))
+        >>> notadir = Path(tmp.name) / "notadir"
+        >>> _ = notadir.write_text("")
+        >>> code, _, stderr = run(str(simple_static_MEDS), "-o", str(notadir / "ids.json"))
         >>> code, stderr.startswith("error: [Errno 17] File exists: ")
         (3, True)
         >>> tmp.cleanup()

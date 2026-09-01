@@ -140,7 +140,9 @@ repos:
       - id: codespell
         args:
           - --skip=*.ipynb,*.bib,*.svg,pyproject.toml
-          - --ignore-words-list=ehr,crate
+          # `statics` is MEDS terminology for static (null-time) measurements; `disjointness`
+          # and `unparseable` are the intended words, not typos for the suggested alternatives.
+          - --ignore-words-list=ehr,crate,statics,disjointness,unparseable
 
   # jupyter notebook cell output clearing
   - repo: https://github.com/kynan/nbstripout

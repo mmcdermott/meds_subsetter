@@ -327,8 +327,8 @@ source = { editable = "." }
 dependencies = [
     { name = "meds" },
     { name = "meds-transforms" },
+    { name = "numpy" },
     { name = "polars" },
-    { name = "pyarrow" },
     { name = "pyyaml" },
 ]
 
@@ -344,6 +344,7 @@ dev = [
     { name = "nested-ragged-tensors" },
     { name = "pre-commit" },
     { name = "pretty-print-directory" },
+    { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -356,8 +357,8 @@ requires-dist = [
     { name = "meds", specifier = "~=0.4.0" },
     { name = "meds-transforms", specifier = ">=0.6,<0.8" },
     { name = "nested-ragged-tensors", marker = "extra == 'torch'", specifier = ">=0.3,<0.4" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "polars", specifier = ">=1.35,<2" },
-    { name = "pyarrow" },
     { name = "pyyaml" },
 ]
 provides-extras = ["torch"]
@@ -369,6 +370,7 @@ dev = [
     { name = "nested-ragged-tensors", specifier = ">=0.3,<0.4" },
     { name = "pre-commit" },
     { name = "pretty-print-directory" },
+    { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff", specifier = "==0.16.5" },
