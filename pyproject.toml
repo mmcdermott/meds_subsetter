@@ -36,12 +36,12 @@ dev = [
   # Keep this pin in sync with the `ruff-pre-commit` rev in
   # .pre-commit-config.yaml. If the two drift, `uv run ruff format` and the
   # pre-commit hook can disagree and fight over the same files.
-  "ruff==0.16.5",
+  "ruff==0.16.8",
   # shfmt-py bundles the `shfmt` binary used by the mdformat-shfmt pre-commit
   # hook. Pinning it here (in addition to the pre-commit hook's
   # additional_dependencies) gives a single source of truth and keeps local
   # `uv run mdformat ...` runs consistent with CI pre-commit runs.
-  "shfmt-py==4.0.0",
+  "shfmt-py==4.2.0",
   "nested-ragged-tensors>=0.3,<0.4",
   "pyarrow>=25.0.1",
 ]
